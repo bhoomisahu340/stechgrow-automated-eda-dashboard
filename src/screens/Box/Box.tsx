@@ -5,11 +5,11 @@ import {
   AlignLeft, Info, ArrowUpRight, LayoutDashboard,
   ChartNoAxesCombined, ShieldCheck, ClipboardList,
   Settings, Palette, Headphones, ChevronDown, FileSpreadsheet,
-  LoaderCircle, X, CircleAlert
+  LoaderCircle, X, CircleAlert, PanelLeft
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
-  Tooltip, CartesianGrid, BarChart, Bar
+  Tooltip, CartesianGrid,ReferenceLine
 } from "recharts";
 import "./Box.css";
 
@@ -66,6 +66,20 @@ function AppIcon({ icon: Icon }: { icon: typeof Upload }) {
   return <Icon size={17} strokeWidth={1.8} />;
 }
 
+// Map correlation values [-1, 1] to exact Figma palette colors
+function getFigmaHeatmapColor(value: number) {
+  const norm = Math.max(-1, Math.min(1, value));
+
+  if (norm > 0.75)  return "#FF5100"; // Bright Orange
+  if (norm > 0.5)   return "#FF854C"; // Orange-Peach
+  if (norm > 0.25)  return "#FFC5AA"; // Soft Peach
+  if (norm > 0)     return "#C4C4FF"; // Light Lavender Blue
+  if (norm > -0.25) return "#9B9BFF"; // Periwinkle Blue
+  if (norm > -0.5)  return "#8787FF"; // Medium Blue-Purple
+  if (norm > -0.75) return "#6767C5"; // Darker Blue-Purple
+  return "#F275BB";                 // Pink (for extreme negative correlation)
+}
+
 export const Box = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<Row[]>(initialRows);
@@ -75,7 +89,7 @@ export const Box = () => {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<Tab>("details");
   const [activeNav, setActiveNav] = useState("Exploratory Data Analysis");
-  const [heatmapMode, setHeatmapMode] = useState("Correlation");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
 
@@ -174,8 +188,12 @@ export const Box = () => {
       : 0;
   }, [heatmap]);
 
-  const missingChart = missingByColumn.map(item => ({
-    name: item.name,
+  // Spread the missing-value observations across a numeric 200–1000 axis.
+  // This keeps the requested evenly spaced scale while retaining each column's missing count.
+  const missingChart = missingByColumn.map((item, index) => ({
+    name: missingByColumn.length <= 1
+      ? 600
+      : 200 + (index / (missingByColumn.length - 1)) * 800,
     missing: item.missing
   }));
 
@@ -228,16 +246,15 @@ export const Box = () => {
     setSearch("");
   };
 
-  const maxMissing = Math.max(1, ...missingChart.map(item => item.missing));
   const visibleColumns = filteredColumns;
 
   return (
-    <main className="eda-app">
+    <main className={`eda-app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">S</div>
           <span>Stechgrow</span>
-          <LayoutDashboard size={19} className="brand-menu" />
+          <button className="brand-menu" type="button" aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => setSidebarCollapsed(value => !value)}><PanelLeft size={19} /></button>
         </div>
 
         <button className="quick-search" onClick={() => {
@@ -294,7 +311,7 @@ export const Box = () => {
             <Search size={19} />
             <input
               id="dataset-search"
-              placeholder="Search for columns..."
+              placeholder="Search for anything"
               value={search}
               onChange={event => setSearch(event.target.value)}
             />
@@ -302,13 +319,24 @@ export const Box = () => {
           </label>
 
           <div className="topbar-spacer" />
-          <button className="gradient-button" title="Refresh dataset" onClick={resetData}>
-            <RefreshCw size={20} />
-          </button>
-          <button className="icon-button" title="Notifications" onClick={() => setShowInfo(!showInfo)}>
-            <Bell size={19} />
-          </button>
-          <div className="avatar">B<span /></div>
+          
+          <div className="topbar-icon-group flex items-center gap-1.5 bg-[#1c1e24] p-1 rounded-xl border border-white/5">
+            <button className="icon-button refresh-button" title="Refresh dataset" onClick={resetData}>
+              <RefreshCw size={18} />
+            </button>
+            <button className="icon-button" title="Notifications" onClick={() => setShowInfo(!showInfo)}>
+              <Bell size={18} />
+            </button>
+          </div>
+
+          <div className="avatar-wrapper relative">
+            <img 
+              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" 
+              alt="Profile" 
+              className="w-9 h-9 rounded-full object-cover border border-white/20"
+            />
+            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#0d0e12]"></span>
+          </div>
         </header>
 
         <div className="page-heading">
@@ -331,7 +359,7 @@ export const Box = () => {
             <button className="icon-button" title="Information" onClick={() => setShowInfo(!showInfo)}>
               <Info size={18} />
             </button>
-            <button className="data-analysis-button" onClick={() => setActiveNav("Data Analysis")}>
+            <button className="data-analysis-button bg-white text-black font-semibold px-4 py-2 rounded-xl text-sm flex items-center gap-2 hover:bg-gray-100 transition shadow-sm" onClick={() => setActiveNav("Data Analysis")}>
               <LayoutDashboard size={18} /> Data Analysis
             </button>
           </div>
@@ -360,9 +388,7 @@ export const Box = () => {
 
         {showSettings && (
           <div className="notice-banner">
-            <span>Heatmap display:</span>
-            <button onClick={() => setHeatmapMode("Correlation")}>Correlation</button>
-            <button onClick={() => setHeatmapMode("Absolute")}>Absolute values</button>
+            <span>Heatmap display options</span>
             <button onClick={() => setShowSettings(false)}><X size={15} /></button>
           </div>
         )}
@@ -371,87 +397,123 @@ export const Box = () => {
           <article className="summary-card">
             <div className="card-heading">Data Summary <ArrowUpRight size={17} /></div>
             <div className="big-number">{formatNumber(rows.length)}</div>
-            <div className="summary-bottom">
-              <div><span>Total Rows</span><strong>{formatNumber(rows.length)}</strong></div>
-              <div><span>Total Columns</span><strong>{columns.length}</strong></div>
+            <div className="summary-bottom summary-rows">
+              <div><span>Total Rows</span><strong>{formatNumber(rows.length)}</strong><i className="row-line row-line-pink" /></div>
+              <div><span>Total Columns</span><strong>{columns.length}</strong><i className="row-line row-line-purple" /></div>
             </div>
-            <div className="mini-bars"><i /><i /></div>
           </article>
 
-          <article className="summary-card">
-            <div className="card-heading">Numeric Columns <ArrowUpRight size={17} /></div>
+          <article className="summary-card relative">
+            <div className="card-heading flex justify-between items-center">
+              <span>Numeric Columns</span> 
+              <span className="correlation-badge">{averageCorrelation.toFixed(2)}</span>
+            </div>
             <div className="big-number">{numericColumns.length}</div>
-            <div className="summary-bottom">
-              <div><span>Mean of means</span><strong>
-                {statistics.length
+            <div className="summary-bottom summary-rows numeric-summary-rows">
+              <div><span>Mean</span><strong>{statistics.length
                   ? formatNumber(statistics.reduce((s, item) => s + item.mean, 0) / statistics.length)
-                  : "—"}
-              </strong></div>
-              <div><span>Average correlation</span><strong>{averageCorrelation.toFixed(2)}</strong></div>
-            </div>
-            <div className="mini-bars"><i /><i /><i /></div>
-          </article>
-
-          <article className="summary-card">
-            <div className="card-heading">Categorical Columns <ArrowUpRight size={17} /></div>
-            <div className="big-number">{categoricalColumns.length}</div>
-            <p className="muted">Detected text and category fields</p>
-            <div className="category-pills">
-              {categoricalColumns.slice(0, 4).map((column, index) => (
-                <span key={column} className={`pill pill-${index}`}>{column}</span>
-              ))}
-              {!categoricalColumns.length && <span className="muted">No categorical columns</span>}
+                  : "—"}</strong><i className="row-line row-line-pink" /></div>
+              <div><span>Median</span><strong>{statistics.length
+                  ? formatNumber(statistics.reduce((s, item) => s + item.median, 0) / statistics.length)
+                  : "—"}</strong><i className="row-line row-line-purple" /></div>
+              <div><span>Average correlation</span><strong>{averageCorrelation.toFixed(2)}</strong><i className="row-line row-line-green" /></div>
             </div>
           </article>
 
-          <article className="summary-card">
-            <div className="card-heading">Datetime Columns <ArrowUpRight size={17} /></div>
-            <div className="big-number">{datetimeColumns.length}</div>
-            <p className="muted">Detected date and time fields</p>
-            <div className="datetime-bars"><i /><i /><i /><i /></div>
+          <article className="summary-card flex justify-between items-center">
+            <div>
+              <div className="card-heading">Categorical Columns <ArrowUpRight size={17} /></div>
+              <div className="big-number">{categoricalColumns.length}</div>
+              <p className="muted">Detected text and category fields</p>
+              <div className="category-pills">
+                {categoricalColumns.slice(0, 4).map((column, index) => (
+                  <span key={column} className={`pill pill-${index}`}>{column}</span>
+                ))}
+                {!categoricalColumns.length && <span className="muted">No categorical columns</span>}
+              </div>
+            </div>
+            <div className="flex items-end gap-1 h-12">
+              <div className="w-1.5 h-10 bg-pink-500 rounded-full"></div>
+              <div className="w-1.5 h-12 bg-purple-500 rounded-full"></div>
+              <div className="w-1.5 h-8 bg-emerald-400 rounded-full"></div>
+            </div>
+          </article>
+
+          <article className="summary-card flex justify-between items-center">
+            <div>
+              <div className="card-heading">Datetime Columns <ArrowUpRight size={17} /></div>
+              <div className="big-number">{datetimeColumns.length}</div>
+              <p className="muted">Detected date and time fields</p>
+            </div>
+            <div className="flex items-end gap-1 h-12">
+              <div className="w-1.5 h-11 bg-emerald-400 rounded-full"></div>
+              <div className="w-1.5 h-8 bg-teal-500 rounded-full"></div>
+              <div className="w-1.5 h-12 bg-emerald-300 rounded-full"></div>
+            </div>
           </article>
         </section>
 
         <section className="analysis-grid">
           <div className="left-analysis">
             <article className="panel missing-panel">
-              <div className="panel-title">
+              <div className="panel-title flex justify-between items-center">
                 <h2>Missing values</h2>
-                <span>Missing cells <strong>{totalMissing}</strong></span>
+                <span className="correlation-indicator">Average correlation <strong>{averageCorrelation.toFixed(2)}</strong></span>
               </div>
-              <div className="missing-content">
-                <div className="missing-stat">
-                  <p>Empty cells found across the uploaded dataset</p>
-                  <div className="big-number">{formatNumber(totalMissing)}</div>
-                  <span className="success-badge">
+              
+              <div className="missing-content flex flex-col md:flex-row gap-4 items-center">
+                <div className="missing-stat min-w-[120px]">
+                  <p className="text-xs text-gray-400">Empty cells found</p>
+                  <div className="big-number text-2xl font-bold">{formatNumber(totalMissing)}</div>
+                  <span className="success-badge bg-emerald-500/20 text-emerald-400 text-xs px-2 py-0.5 rounded-md font-semibold">
                     {rows.length && columns.length
                       ? (totalMissing / (rows.length * columns.length) * 100).toFixed(2)
                       : "0.00"}%
                   </span>
-                  <small>of all dataset cells</small>
+                  <small className="block text-[10px] text-gray-400 mt-1">of all dataset cells</small>
                 </div>
+
                 <div className="missing-chart">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={missingChart}>
-                      <defs>
-                        <linearGradient id="missingGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#6554ff" stopOpacity={0.8} />
-                          <stop offset="100%" stopColor="#6554ff" stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid stroke="#41414b" strokeDasharray="3 5" vertical />
-                      <XAxis dataKey="name" tick={{ fill: "#999", fontSize: 10 }} />
-                      <YAxis hide />
-                      <Tooltip contentStyle={{ background: "#222", border: "1px solid #444", color: "#fff" }} />
-                      <Area dataKey="missing" type="monotone" stroke="#7060ff" strokeWidth={3} fill="url(#missingGradient)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
+ <ResponsiveContainer width="100%" height="100%">
+  <AreaChart data={missingChart}>
+    <defs>
+      <linearGradient id="missingGradient" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.8} />
+        <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.0} />
+      </linearGradient>
+    </defs>
+    
+    <CartesianGrid
+      stroke="#3b3b43"
+      strokeDasharray="3 4"
+      vertical={false}
+      horizontal={false}
+    />
+    
+    {/* Clean dynamic vertical lines for your exact ticks without separate imports */}
+    {[200, 400, 600, 800, 1000].map((tickVal) => (
+      <ReferenceLine key={tickVal} x={tickVal} stroke="#3b3b43" strokeDasharray="3 4" strokeOpacity={0.6} />
+    ))}
+
+    <XAxis
+      type="number"
+      dataKey="name"
+      domain={[200, 1000]}
+      ticks={[200, 400, 600, 800, 1000]}
+      interval={0}
+      padding={{ left: 15, right: 15 }}
+      allowDecimals={false}
+      tickFormatter={(value: number) => String(value)}
+      tick={{ fill: "#d0d0d5", fontSize: 10 }}
+      axisLine={false}
+      tickLine={false}
+    />
+    <YAxis hide domain={[0, (dataMax: number) => Math.max(1, dataMax * 1.15)]} />
+    <Tooltip contentStyle={{ background: "#1f222a", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
+    <Area dataKey="missing" type="monotone" stroke="#a78bfa" strokeWidth={3} fill="url(#missingGradient)" />
+  </AreaChart>
+</ResponsiveContainer>
                 </div>
-              </div>
-              <div className="missing-legend">
-                {missingByColumn.slice(0, 4).map(item => (
-                  <span key={item.name}>{item.name}: {item.missing} ({item.percent.toFixed(1)}%)</span>
-                ))}
               </div>
             </article>
 
@@ -509,40 +571,65 @@ export const Box = () => {
           </div>
 
           <article className="panel heatmap-panel">
-            <div className="panel-title">
-              <h2>Correlation Heatmap</h2>
-              <label className="select-control">
-                <select value={heatmapMode} onChange={event => setHeatmapMode(event.target.value)}>
-                  <option>Correlation</option>
-                  <option>Absolute</option>
-                </select>
+            <div className="panel-title flex justify-between items-center mb-3">
+              <h2>Co-relation Heatmap</h2>
+              <button className="flex items-center gap-1.5 bg-[#22252e] text-xs px-3 py-1.5 rounded-lg border border-white/5 text-gray-300">
+                <span>Map Style</span>
                 <ChevronDown size={14} />
-              </label>
+              </button>
             </div>
+
             {heatmap.length > 0 ? (
-              <div className="heatmap-layout">
-                <div className="heatmap-y-labels">
-                  {heatmap.map(row => <span key={row.name} title={row.name}>{row.name}</span>)}
-                </div>
-                <div className="heatmap" style={{ gridTemplateColumns: `repeat(${numericColumns.length}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${numericColumns.length}, minmax(0, 1fr))` }}>
-                  {heatmap.map(row => row.cells.map(cell => {
-                    const value = heatmapMode === "Absolute" ? Math.abs(cell.value) : cell.value;
-                    const hue = value < 0 ? 328 : 245;
-                    const lightness = 50 + (1 - Math.abs(value)) * 32;
-                    return (
+              <div className="figma-heatmap-wrapper flex flex-col gap-2">
+                
+                {/* Main Grid Block + Right Scale Bar */}
+                <div className="flex gap-3 items-stretch">
+                  
+                  {/* Left Y-Axis Row Labels (A, B, C...) */}
+                  <div className="flex flex-col justify-around text-xs font-medium text-gray-400 pr-1 py-2">
+                    {heatmap.map((row, index) => (
+                      <span key={row.name} title={row.name}>
+                        {String.fromCharCode(65 + index % 26)}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Single Seamless Heatmap Block (No Cell Borders) */}
+                  <div 
+                    className="figma-heatmap-block"
+                    style={{ 
+                      gridTemplateColumns: `repeat(${numericColumns.length}, minmax(0, 1fr))`,
+                      gridTemplateRows: `repeat(${numericColumns.length}, minmax(0, 1fr))` 
+                    }}
+                  >
+                    {heatmap.map(row => row.cells.map(cell => (
                       <div
                         key={`${row.name}-${cell.column}`}
-                        className="heat-cell"
+                        className="figma-heat-cell"
                         title={`${row.name} × ${cell.column}: ${cell.value.toFixed(3)}`}
-                        style={{ backgroundColor: `hsl(${hue}, 90%, ${lightness}%)` }}
+                        style={{ backgroundColor: getFigmaHeatmapColor(cell.value) }}
                       />
-                    );
-                  }))}
+                    )))}
+                  </div>
+
+                  {/* Vertical Single-Gradient Scale Legend */}
+                  <div className="flex flex-col justify-between items-center py-1 text-[10px] text-gray-400 font-medium">
+                    <span>1.00</span>
+                    <div className="heatmap-gradient"></div>
+                    <span>-1.00</span>
+                  </div>
+
                 </div>
-                <div className="heatmap-scale"><span>1.0</span><i /><span>0</span><i /><span>-1.0</span></div>
-                <div className="heatmap-x-labels">
-                  {numericColumns.map(column => <span key={column} title={column}>{column}</span>)}
+
+                {/* Bottom X-Axis Column Labels (A, B, C...) */}
+                <div className="flex pl-6 pr-6 justify-around text-xs font-medium text-gray-400">
+                  {numericColumns.map((column, index) => (
+                    <span key={column} title={column}>
+                      {String.fromCharCode(65 + index % 26)}
+                    </span>
+                  ))}
                 </div>
+
               </div>
             ) : (
               <div className="empty-state">
@@ -551,10 +638,6 @@ export const Box = () => {
                 <p>Upload a CSV containing numeric data to calculate correlations.</p>
               </div>
             )}
-            <div className="heatmap-footer">
-              <span>{numericColumns.length} numeric columns</span>
-              <span>Mean absolute correlation: {averageCorrelation.toFixed(3)}</span>
-            </div>
           </article>
         </section>
 
@@ -566,4 +649,3 @@ export const Box = () => {
     </main>
   );
 };
-
